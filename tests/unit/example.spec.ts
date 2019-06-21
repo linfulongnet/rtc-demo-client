@@ -10,7 +10,7 @@ import AudioRecording from '@/components/AudioRecording.vue'
 // }
 
 describe('AudioRecording.vue', () => {
-  it('mount audio-recording component',()=>{
+  it('mount audio-recording component', () => {
     const wrapper = shallowMount(AudioRecording, {})
     const btn = wrapper.find('button')
     expect(btn.html()).toMatch('Start Record')
