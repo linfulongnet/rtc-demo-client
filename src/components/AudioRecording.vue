@@ -32,6 +32,7 @@ export default class AudioRecording extends Vue {
     audio: true,
     video: false,
   }
+  public ws?: WebSocket
 
   get actionName() {
     return this.isRecording ? 'Stop Record' : 'Start Record'
@@ -53,6 +54,7 @@ export default class AudioRecording extends Vue {
     this.times = setInterval(() => {
       this.recordingTime++
     }, 1000)
+
   }
 
   public getDataUrl(): Promise<string> {
@@ -96,6 +98,43 @@ export default class AudioRecording extends Vue {
 
   public saveAsRecordData({blob = new Blob(), filename = new Date().toISOString()}): void {
     RecordRTC.invokeSaveAsDialog(blob, filename)
+  }
+
+  public async iniRtcPeerObject() {
+    const peer = new RTCPeerConnection()
+    const offer = await peer.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    })
+    await peer.setLocalDescription(offer)
+
+    return peer
+  }
+
+  public initWebSocket(url: string): WebSocket {
+    const ws: WebSocket = new WebSocket(url)
+    // ws.binaryType = 'arraybuffer'
+    ws.onopen = () => {
+      console.log('webSocket opened')
+      ws.send(new Uint8Array([100, 101, 102, 103]))
+    }
+    ws.onclose = () => {
+      console.log('webSocket closed')
+    }
+    ws.onerror = (event: Event) => {
+      console.log('webSocket error', event)
+    }
+    ws.onmessage = (event: Event) => {
+      console.log('webSocket onmessage', event)
+    }
+
+    return ws
+  }
+
+  public beforeMount() {
+    this.ws = this.initWebSocket(`ws://localhost:7000/ws`)
+
+    this.iniRtcPeerObject()
   }
 
 }
