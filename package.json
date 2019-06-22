@@ -17,6 +17,7 @@
     "vue-property-decorator": "^8.1.0"
   },
   "devDependencies": {
+    "@types/dom-mediacapture-record": "^1.0.1",
     "@types/jest": "^23.1.4",
     "@types/lodash": "^4.14.134",
     "@vue/cli-plugin-babel": "^3.8.0",
