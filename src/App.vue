@@ -1,16 +1,19 @@
 <template>
   <div id="app">
-    <AudioRecording/>
+<!--    <AudioRecording/>-->
+    <Recording/>
   </div>
 </template>
 
 <script lang="ts">
 import {Component, Vue} from 'vue-property-decorator';
-import AudioRecording from './components/AudioRecording.vue';
+// import AudioRecording from './components/AudioRecording.vue';
+import Recording from './components/Recording.vue';
 
 @Component({
   components: {
-    AudioRecording,
+    // AudioRecording,
+    Recording,
   },
 })
 export default class App extends Vue {
