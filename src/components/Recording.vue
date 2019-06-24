@@ -4,7 +4,7 @@
       <button @click="toggleRecording" v-text="actionName"></button>
       <button @click="togglePause" v-text="pauseName" :disabled='!isRecording'></button>
       <div>
-        Recording time: {{recordingTime}}
+        Recording time: {{durationLabel}}
       </div>
     </header>
 
@@ -26,8 +26,6 @@
     public isRecording: boolean = false
     public stream?: MediaStream
     public recorder?: MediaRecorder
-    public times: number = 0
-    public recordingTime: number = 0
     public audioSources: any[] = []
     public constraints: { [key: string]: any } = {
       audio: {
@@ -44,6 +42,11 @@
     public bufferSize: number = 4096
     public sampleSize: number = 16
     public pcmSamples: any[] = []
+    public duration: number = 0
+
+    get durationLabel() {
+      return parseFloat((this.duration).toFixed(3))
+    }
 
     get actionName() {
       return this.isRecording ? 'Stop Record' : 'Start Record'
@@ -80,7 +83,8 @@
       this.processor = this.context.createScriptProcessor(this.bufferSize, this.channelCount, this.channelCount)
       this.processor.onaudioprocess = (ev: AudioProcessingEvent) => {
         const sample = ev.inputBuffer.getChannelData(0)
-        // console.log('this.processor.onaudioprocess:', ev, sample)
+        // console.log('onaudioprocess:', ev, sample)
+        this.duration += ev.inputBuffer.duration
         this.pcmSamples.push(sample)
         wavCodec.encode(sample)
       }
@@ -99,9 +103,6 @@
       }
       this.recorder.onstop = async (event: Event) => {
         this.isRecording = false
-        this.recordingTime = 0
-        this.clearRecordingInterval()
-
         this.sourceDisconnect()
         this.contextClose()
 
@@ -182,20 +183,13 @@
       } else {
         this.recorder.pause()
         this.sourceDisconnect()
-        this.clearRecordingInterval()
       }
 
       this.isPaused = !this.isPaused
     }
 
     public calcRecordingTime() {
-      this.times = setInterval(() => {
-        this.recordingTime++
-      }, 1000)
-    }
-
-    public clearRecordingInterval() {
-      clearInterval(this.times)
+      this.duration = 0
     }
 
     public getExt(): string {
