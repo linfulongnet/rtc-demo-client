@@ -18,13 +18,14 @@
 
 <script lang="ts">
   import {Component, Vue} from 'vue-property-decorator'
+  import WavCodec from '@/modules/wavCodec'
 
   @Component
   export default class Recording extends Vue {
     public isPaused: boolean = false
     public isRecording: boolean = false
-    public stream: any = null
-    public recorder: any = null
+    public stream?: MediaStream
+    public recorder?: MediaRecorder
     public times: number = 0
     public recordingTime: number = 0
     public audioSources: any[] = []
@@ -35,6 +36,14 @@
       video: false
     }
     public dataChunks: Blob[] = []
+    public context?: AudioContext
+    public source?: MediaStreamAudioSourceNode
+    public processor?: ScriptProcessorNode
+    public channelCount: number = 1
+    public sampleRate: number = 10000
+    public bufferSize: number = 4096
+    public sampleSize: number = 16
+    public pcmSamples: any[] = []
 
     get actionName() {
       return this.isRecording ? 'Stop Record' : 'Start Record'
@@ -48,22 +57,38 @@
       this.stream = await navigator.mediaDevices.getUserMedia(this.constraints)
       this.isRecording = true
 
+      // 获取音频轨道数据
       let tracks = this.stream.getAudioTracks()
       let firstTrack = tracks[0]
       if (!firstTrack) {
         throw new Error('DOMException: UnkownError, media track not found.')
       }
-      console.log('tracks', firstTrack, firstTrack.getSettings())
-      let context = new AudioContext()
-      let sampleRate = context.sampleRate
-      console.log('sampleRate', sampleRate)
+      let firstTrackSettings = firstTrack.getSettings()
+
+      // 创建音频环境，处理音频数据
+      this.context = new AudioContext()
+      this.channelCount = firstTrackSettings.channelCount || 1
+      this.sampleSize = firstTrackSettings.sampleSize
+      this.sampleRate = this.context.sampleRate
+      let wavCodec = new WavCodec({
+        sampleRate: this.sampleRate,
+        channelCount: this.channelCount,
+        bufferSize: this.bufferSize,
+        sampleSize: this.sampleSize
+      })
+      this.source = this.context.createMediaStreamSource(this.stream)
+      this.processor = this.context.createScriptProcessor(this.bufferSize, this.channelCount, this.channelCount)
+      this.processor.onaudioprocess = (ev: AudioProcessingEvent) => {
+        const sample = ev.inputBuffer.getChannelData(0)
+        // console.log('this.processor.onaudioprocess:', ev, sample)
+        this.pcmSamples.push(sample)
+        wavCodec.encode(sample)
+      }
+      this.sourceConnect()
 
       this.recorder = new MediaRecorder(this.stream, {
-        audioBitsPerSecond: 128000
-        // videoBitsPerSecond: 2500000,
-        // mimeType: 'audio/webm'
+        audioBitsPerSecond: this.sampleRate
       })
-      console.log('MediaRecorder', this.recorder)
       this.recorder.onstart = (event: Event) => {
         console.log('Recorder started')
 
@@ -72,8 +97,28 @@
       this.recorder.onpause = (event: Event) => {
         console.log('Recorder paused')
       }
-      this.recorder.onstop = (event: Event) => {
+      this.recorder.onstop = async (event: Event) => {
+        this.isRecording = false
+        this.recordingTime = 0
         this.clearRecordingInterval()
+
+        this.sourceDisconnect()
+        this.contextClose()
+
+        wavCodec.finish()
+        let wavBlob = wavCodec.getBlob()
+        let wavAudio = {
+          dataUrl: URL.createObjectURL(wavBlob),
+          fileName: 'wavCodec.wav'
+        }
+        this.audioSources.push(wavAudio)
+        console.log('wavCodec getBlob', wavAudio, wavBlob)
+
+        if (!this.recorder || !this.stream) {
+          return
+        }
+        this.stream.getTracks().forEach((track) => track.stop())
+
         let blob = new Blob(this.dataChunks, {'type': this.recorder.mimeType})
         const dataUrl = URL.createObjectURL(blob)
         console.log('Recorder stopped', blob, dataUrl)
@@ -82,23 +127,21 @@
           fileName: new Date().toISOString() + '.' + this.getExt()
         })
 
-        this.$nextTick(() => {
-          this.recorder = null
-          this.stream = null
-        })
+        // 最后翻译音频对象
+        this.recorder = undefined
+        this.stream = undefined
       }
-
-      this.recorder.ondataavailable = (event: BlobEvent) => {
-        console.log('ondataavailable', event.data)
-        this.dataChunks.push(event.data)
+      this.recorder.ondataavailable = async (event: BlobEvent) => {
+        const data = event.data
+        // const buffer = await new Response(data).arrayBuffer()
+        // console.log('ondataavailable', data, new Uint8Array(buffer))
+        this.dataChunks.push(data)
       }
-      this.recorder.start(100)
+      this.recorder.start(60)
     }
 
     public async stopRecord() {
-      this.recorder.stop()
-      this.isRecording = false
-      this.recordingTime = 0
+      this.recorder && this.recorder.stop()
     }
 
     public toggleRecording() {
@@ -109,33 +152,63 @@
       }
     }
 
+    public contextClose() {
+      this.context && this.context.close()
+    }
+
+    public sourceDisconnect() {
+      this.source && this.source.disconnect()
+      this.processor && this.processor.disconnect()
+    }
+
+    public sourceConnect() {
+      if (!this.source || !this.processor || !this.context) {
+        console.error('sourceConnect error:', this.source, this.processor, this.context)
+        return
+      }
+      this.source.connect(this.processor)
+      this.processor.connect(this.context.destination)
+    }
+
     public togglePause() {
+      if (!this.recorder) {
+        return
+      }
+
       if (this.isPaused) {
         this.recorder.resume()
+        this.sourceConnect()
         this.calcRecordingTime()
       } else {
         this.recorder.pause()
+        this.sourceDisconnect()
         this.clearRecordingInterval()
       }
 
       this.isPaused = !this.isPaused
     }
 
-    calcRecordingTime() {
+    public calcRecordingTime() {
       this.times = setInterval(() => {
         this.recordingTime++
       }, 1000)
     }
 
-    clearRecordingInterval() {
+    public clearRecordingInterval() {
       clearInterval(this.times)
     }
 
-    getExt(): string {
-      let ext = ''
+    public getExt(): string {
+      let ext: string = ''
+      if (!this.recorder) {
+        return ext
+      }
+
       try {
-        const reg = /(\w+)\/(?<ext>\w+)(;codecs)?/i
-        ext = this.recorder.mimeType.match(reg).groups.ext
+        const reg: RegExp = /(\w+)\/(?<ext>\w+)(;codecs)?/i
+        const res: RegExpMatchArray | null = this.recorder.mimeType.match(reg)
+
+        ext = (res && res.groups && res.groups.ext) || ext
       } catch (e) {
 
       }
