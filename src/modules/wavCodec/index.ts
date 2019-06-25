@@ -154,7 +154,6 @@ export class WavCodec implements IWavCodec {
       this.getWavHead(),
       ...this.dataViews
     ]
-    console.log('buffer', buffer)
     return new Blob(buffer, {type: type || 'audio/wav'})
   }
 }
