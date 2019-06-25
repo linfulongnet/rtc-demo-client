@@ -14,7 +14,7 @@ const DefCodecOption: ICodecOption = {
   sampleRate: 16000,
   channelCount: 1,
   bufferSize: 4096,
-  sampleSize: 16
+  sampleSize: 16,
 }
 
 export interface IWavCodec {
@@ -44,20 +44,20 @@ export interface IWavCodec {
 }
 
 export class WavCodec implements IWavCodec {
-  config: ICodecOption
-  dataViews: DataView[] = []
-  dataViewsLength: number = 0
-  duration: number = 0
+  public config: ICodecOption
+  public dataViews: DataView[] = []
+  public dataViewsLength: number = 0
+  public duration: number = 0
 
-  stream?: MediaStream
-  source?: MediaStreamAudioSourceNode
-  processor?: ScriptProcessorNode
+  public stream?: MediaStream
+  public source?: MediaStreamAudioSourceNode
+  public processor?: ScriptProcessorNode
 
   constructor(stream: MediaStream, option?: ICodecOption) {
     this.stream = stream
     this.config = {
       ...DefCodecOption,
-      ...option
+      ...option,
     }
 
     // 获取音频轨道数据
@@ -75,24 +75,24 @@ export class WavCodec implements IWavCodec {
     this.config.originSampleRate = this.source.context.sampleRate as number
   }
 
-  start() {
+  public start() {
     this.dataViews = []
     this.dataViewsLength = 0
 
     this.resume()
   }
 
-  stop() {
+  public stop() {
     this.pause()
     this.stream && this.stream.getTracks().forEach((track) => track.stop())
   }
 
-  pause() {
+  public pause() {
     this.source && this.source.disconnect()
     this.processor && this.processor.disconnect()
   }
 
-  resume() {
+  public resume() {
     if (!this.source || !this.processor) {
       return
     }
@@ -100,23 +100,27 @@ export class WavCodec implements IWavCodec {
     this.processor.connect(this.source.context.destination)
   }
 
-  onaudioprocess(ev: AudioProcessingEvent) {
-    const sample = ev.inputBuffer.getChannelData(0)
-    this.duration += ev.inputBuffer.duration
-    this.onDuration(this.duration, ev.inputBuffer.duration)
-    this.encode(sample)
+  public onaudioprocess(ev: AudioProcessingEvent) {
+    try {
+      const sample = ev.inputBuffer.getChannelData(0)
+      this.duration += ev.inputBuffer.duration
+      this.onDuration(this.duration, ev.inputBuffer.duration)
+      this.encode(sample)
+    } catch (e) {
+      alert(e.toString())
+    }
   }
 
-  onDuration(allDuration: number, duration: number) {
+  public onDuration(allDuration: number, duration: number) {
   }
 
-  encode(samples: Float32Array): void {
+  public encode(samples: Float32Array): void {
     // 根据采样率比值压缩原始音频数据
     samples = interpolateArray(samples, this.config.sampleRate as number, this.config.originSampleRate as number)
 
-    let {channelCount} = this.config as { channelCount: number }
-    let buffer: ArrayBuffer = new ArrayBuffer(samples.length * channelCount * 2)
-    let view: DataView = new DataView(buffer)
+    const {channelCount} = this.config as { channelCount: number }
+    const buffer: ArrayBuffer = new ArrayBuffer(samples.length * channelCount * 2)
+    const view: DataView = new DataView(buffer)
 
     floatTo16BitPCM(view, samples)
 
@@ -124,12 +128,14 @@ export class WavCodec implements IWavCodec {
     this.dataViewsLength += buffer.byteLength
   }
 
-  getWavHead(): DataView {
-    let buffer: ArrayBuffer = new ArrayBuffer(44)
-    let view: DataView = new DataView(buffer)
-    let {channelCount, sampleRate, sampleSize} = this.config as { sampleRate: number, sampleSize: number, channelCount: number }
-    let dataSize: number = channelCount * this.dataViewsLength * 2
-    let blockAlign: number = channelCount * sampleSize / 8
+  public getWavHead(): DataView {
+    const buffer: ArrayBuffer = new ArrayBuffer(44)
+    const view: DataView = new DataView(buffer)
+    const {channelCount, sampleRate, sampleSize} = this.config as {
+      sampleRate: number, sampleSize: number, channelCount: number,
+    }
+    const dataSize: number = channelCount * this.dataViewsLength * 2
+    const blockAlign: number = channelCount * sampleSize / 8
 
     // 设置wav格式头部信息数据
     writeString(view, 0, 'RIFF')
@@ -149,10 +155,10 @@ export class WavCodec implements IWavCodec {
     return view
   }
 
-  getBlob(type?: string): Blob {
+  public getBlob(type?: string): Blob {
     const buffer: DataView[] = [
       this.getWavHead(),
-      ...this.dataViews
+      ...this.dataViews,
     ]
     return new Blob(buffer, {type: type || 'audio/wav'})
   }
@@ -192,20 +198,20 @@ function linearInterpolate(before: number, after: number, atPoint: number) {
  * @param sampleRate         新采样率
  */
 function interpolateArray(data: Float32Array, sampleRate: number, originSampleRate: number): Float32Array {
-  if (originSampleRate == sampleRate) {
+  if (originSampleRate === sampleRate) {
     return data
   }
 
-  let fitCount: number = ~~(data.length * (sampleRate / originSampleRate))
-  let newData: Float32Array = new Float32Array(fitCount)
-  let lastDataPos: number = data.length - 1
-  let lastFitPos: number = fitCount - 1
-  let springFactor: number = lastDataPos / lastFitPos
+  const fitCount: number = ~~(data.length * (sampleRate / originSampleRate))
+  const newData: Float32Array = new Float32Array(fitCount)
+  const lastDataPos: number = data.length - 1
+  const lastFitPos: number = fitCount - 1
+  const springFactor: number = lastDataPos / lastFitPos
   newData[0] = data[0]
   for (let i = 1; i < lastFitPos; i++) {
-    let tmp = i * springFactor
-    let before = ~~(Math.floor(tmp))
-    let after = ~~(Math.ceil(tmp))
+    const tmp = i * springFactor
+    const before = ~~(Math.floor(tmp))
+    const after = ~~(Math.ceil(tmp))
     newData[i] = linearInterpolate(data[before], data[after], tmp - before)
   }
   newData[lastFitPos] = data[lastDataPos]
@@ -220,19 +226,19 @@ function interpolateArray(data: Float32Array, sampleRate: number, originSampleRa
  * @param sampleRate         新采样率
  */
 function resampledData(sourceData: Float32Array, sampleRate: number, originSampleRate: number): Float32Array {
-  if (originSampleRate == sampleRate) {
+  if (originSampleRate === sampleRate) {
     return sourceData
   }
 
-  let srcSize = sourceData.length
-  let last_pos = srcSize - 1
-  let dstSize = srcSize * (sampleRate / originSampleRate)
-  let destinationData: Float32Array = new Float32Array(dstSize)
+  const srcSize = sourceData.length
+  const lastPos = srcSize - 1
+  const dstSize = srcSize * (sampleRate / originSampleRate)
+  const destinationData: Float32Array = new Float32Array(dstSize)
   for (let idx = 0; idx < dstSize; idx++) {
-    let index = ~~((idx * originSampleRate) / (sampleRate))
-    let p1 = index
-    let coef = index - p1
-    let p2 = (p1 == last_pos) ? last_pos : p1 + 1
+    const index = ~~((idx * originSampleRate) / (sampleRate))
+    const p1 = index
+    const coef = index - p1
+    const p2 = (p1 === lastPos) ? lastPos : p1 + 1
     destinationData[idx] = ((1.0 - coef) * sourceData[p1] + coef * sourceData[p2])
   }
 
