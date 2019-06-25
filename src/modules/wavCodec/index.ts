@@ -8,15 +8,25 @@ export interface ICodecOption {
   bufferSize?: number
 }
 
+const DefCodecOption: ICodecOption = {
+  originSampleRate: 44100,
+  sampleRate: 22050,
+  channelCount: 1,
+  bufferSize: 4096,
+  sampleSize: 16
+}
+
 export interface IWavCodec {
   config: ICodecOption
   dataViews: DataView[]
   dataViewsLength: number
   ratio: number
 
-  new(option?: ICodecOption): IWavCodec
+  stream?: MediaStream
+  source?: MediaStreamAudioSourceNode
+  processor?: ScriptProcessorNode
 
-  writeString(view: DataView, offset: number, str: string): void
+  new(option?: ICodecOption): IWavCodec
 
   compress(samples: Float32Array, sampleRate: number): Float32Array
 
@@ -27,14 +37,18 @@ export interface IWavCodec {
   cancel(): void
 
   getBlob(type?: string): Blob
-}
 
-const DefCodecOption: ICodecOption = {
-  originSampleRate: 44100,
-  sampleRate: 22050,
-  channelCount: 1,
-  bufferSize: 4096,
-  sampleSize: 16
+  start(): void
+
+  stop(): void
+
+  pause(): void
+
+  resume(): void
+
+  onDuration(cb: (allDuration: number, duration: number) => void): void
+
+  ondataavailable(event: BlobEvent): void
 }
 
 // @ts-ignore
@@ -43,21 +57,73 @@ export class WavCodec implements IWavCodec {
   dataViews: DataView[] = []
   dataViewsLength: number = 0
   ratio: number = 1
+  stream: MediaStream
+  source: MediaStreamAudioSourceNode
+  processor: ScriptProcessorNode
+  duration: number = 0
 
-  constructor(option: ICodecOption = DefCodecOption) {
+  cbs: { [key: string]: Function } = {}
+
+  constructor(stream: MediaStream, option?: ICodecOption) {
+    this.stream = stream
     this.config = {
       ...DefCodecOption,
       ...option
     }
-    let {sampleRate, originSampleRate} = this.config as { sampleRate: number, originSampleRate: number }
+
+    // 获取音频轨道数据
+    const tracks = this.stream.getAudioTracks()
+    const firstTrackSettings = tracks[0].getSettings()
+    this.config.sampleSize = firstTrackSettings.sampleSize as number
+    const channelCount: number = this.config.channelCount = firstTrackSettings.channelCount as number
+    const sampleRate: number = this.config.sampleRate as number
+    const bufferSize: number = this.config.bufferSize as number
+
+    // 生成音频源节点，及设置采样数据量大小
+    const context = new AudioContext()
+    this.source = context.createMediaStreamSource(stream)
+    this.processor = context.createScriptProcessor(bufferSize, channelCount, channelCount)
+    this.processor.onaudioprocess = this.onaudioprocess.bind(this)
+
+    const originSampleRate: number = this.config.originSampleRate = this.source.context.sampleRate as number
+
+    // 计算压缩比率值
     this.ratio = Math.ceil(originSampleRate / sampleRate)
     console.log('ratio', originSampleRate, sampleRate, this.ratio)
   }
 
-  writeString(view: DataView, offset: number, str: string): void {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i))
-    }
+  start() {
+    this.resume()
+  }
+
+  stop() {
+    this.pause()
+    this.stream.getTracks().forEach((track) => track.stop())
+  }
+
+  pause() {
+    this.source && this.source.disconnect()
+    this.processor && this.processor.disconnect()
+  }
+
+  resume() {
+    this.source.connect(this.processor)
+    this.processor.connect(this.source.context.destination)
+  }
+
+  onaudioprocess(ev: AudioProcessingEvent) {
+    const sample = ev.inputBuffer.getChannelData(0)
+    this.duration += ev.inputBuffer.duration
+    this.cbs['duration'] && this.cbs['duration'](this.duration, ev.inputBuffer.duration)
+    this.encode(sample)
+  }
+
+  ondataavailable(event: BlobEvent) {
+
+  }
+
+  onDuration(cb: (allDuration: number, duration: number) => void) {
+    this.cbs['duration'] = cb
   }
 
   /*
@@ -100,10 +166,10 @@ export class WavCodec implements IWavCodec {
     let blockAlign: number = channelCount * sampleSize / 8
 
     // 设置wav格式头部信息数据
-    this.writeString(view, 0, 'RIFF')
+    writeString(view, 0, 'RIFF')
     view.setUint32(4, 36 + dataSize, true)
-    this.writeString(view, 8, 'WAVE')
-    this.writeString(view, 12, 'fmt ')
+    writeString(view, 8, 'WAVE')
+    writeString(view, 12, 'fmt ')
     view.setUint32(16, 16, true)
     view.setUint16(20, 1, true)
     view.setUint16(22, channelCount, true)
@@ -111,7 +177,7 @@ export class WavCodec implements IWavCodec {
     view.setUint32(28, sampleRate * blockAlign, true)
     view.setUint16(32, blockAlign, true)
     view.setUint16(34, sampleSize, true)
-    this.writeString(view, 36, 'data')
+    writeString(view, 36, 'data')
     view.setUint32(40, dataSize, true)
 
     this.dataViews.unshift(view)
@@ -129,6 +195,11 @@ export class WavCodec implements IWavCodec {
 
 export default WavCodec
 
+function writeString(view: DataView, offset: number, str: string): void {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i))
+  }
+}
 
 // function floatTo16BitPCM(output, offset, input) {
 //   let initOffset = offset;

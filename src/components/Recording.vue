@@ -10,6 +10,7 @@
 
     <div class='recording-container'
          v-for="(source,index) in audioSources" :key="index">
+      <span>{{source.fileName}}</span>
       <audio :src="source.dataUrl" controls></audio>
       <button @click="saveAsRecordData(source)">download</button>
     </div>
@@ -18,7 +19,7 @@
 
 <script lang="ts">
   import {Component, Vue} from 'vue-property-decorator'
-  import WavCodec from '@/modules/wavCodec'
+  import WavCodec, {IWavCodec} from '@/modules/wavCodec'
 
   @Component
   export default class Recording extends Vue {
@@ -32,68 +33,31 @@
       video: false
     }
     public dataChunks: Blob[] = []
-    public context?: AudioContext
-    public source?: MediaStreamAudioSourceNode
-    public processor?: ScriptProcessorNode
     public sampleRate: number = 9000
     public bufferSize: number = 4096
-    public pcmSamples: any[] = []
     public duration: number = 0
-
-    get durationLabel() {
-      return parseFloat((this.duration).toFixed(3))
-    }
-
-    get actionName() {
-      return this.isRecording ? 'Stop Record' : 'Start Record'
-    }
-
-    get pauseName() {
-      return this.isPaused ? 'Resume' : 'Paused'
-    }
+    public wavCodec?: IWavCodec
 
     public async startRecord() {
       this.stream = await navigator.mediaDevices.getUserMedia(this.constraints)
       this.isRecording = true
 
-      // 获取音频轨道数据
-      let tracks = this.stream.getAudioTracks()
-      let firstTrack = tracks[0]
-      if (!firstTrack) {
-        throw new Error('DOMException: UnkownError, media track not found.')
-      }
-      let firstTrackSettings = firstTrack.getSettings()
-      const channelCount = firstTrackSettings.channelCount
-      const sampleSize = firstTrackSettings.sampleSize
-
       // 创建音频环境，处理音频数据
-      this.context = new AudioContext()
-      this.source = this.context.createMediaStreamSource(this.stream)
-      this.processor = this.context.createScriptProcessor(this.bufferSize, channelCount, channelCount)
-
-      const sampleRate = this.source.context.sampleRate
-      let wavCodec = new WavCodec({
-        originSampleRate: sampleRate,
+      // @ts-ignore
+      const wavCodec = this.wavCodec = new WavCodec(this.stream, {
         sampleRate: this.sampleRate,
-        channelCount: channelCount,
-        bufferSize: this.bufferSize,
-        sampleSize: sampleSize
+        bufferSize: this.bufferSize
       })
+      wavCodec.onDuration((allDuration: number) => {
+        this.duration = allDuration
+      })
+      wavCodec.start()
 
-      this.processor.onaudioprocess = (ev: AudioProcessingEvent) => {
-        const sample = ev.inputBuffer.getChannelData(0)
-        // console.log('onaudioprocess:', ev)
-        this.duration += ev.inputBuffer.duration
-        this.pcmSamples.push(sample)
-        wavCodec.encode(sample)
-      }
-      this.sourceConnect()
 
       // 原生API
       this.recorder = new MediaRecorder(this.stream)
       this.recorder.onstart = (event: Event) => {
         console.log('Recorder started')
-
         this.calcRecordingTime()
       }
       this.recorder.onpause = (event: Event) => {
@@ -101,18 +65,6 @@
       }
       this.recorder.onstop = async (event: Event) => {
         this.isRecording = false
-        this.sourceDisconnect()
-        this.contextClose()
-
-        wavCodec.finish()
-        let wavBlob = wavCodec.getBlob()
-        let wavAudio = {
-          dataUrl: URL.createObjectURL(wavBlob),
-          fileName: 'wavCodec.wav'
-        }
-        this.audioSources.push(wavAudio)
-        console.log('wavCodec getBlob', wavAudio, wavBlob)
-
         if (!this.recorder || !this.stream) {
           return
         }
@@ -123,7 +75,7 @@
         console.log('Recorder stopped', blob, dataUrl)
         this.audioSources.push({
           dataUrl,
-          fileName: new Date().toISOString() + '.' + this.getExt()
+          fileName: 'mediaRecorder' + new Date().toISOString() + '.' + this.getExt()
         })
 
         // 最后翻译音频对象
@@ -140,7 +92,20 @@
     }
 
     public async stopRecord() {
+      this.isPaused = false
       this.recorder && this.recorder.stop()
+
+      if (this.wavCodec) {
+        this.wavCodec.stop()
+        this.wavCodec.finish()
+        let wavBlob = this.wavCodec.getBlob()
+        let wavAudio = {
+          dataUrl: URL.createObjectURL(wavBlob),
+          fileName: 'record' + new Date().toISOString() + '.wav'
+        }
+        this.audioSources.push(wavAudio)
+        console.log('this.wavCodec getBlob', wavBlob, wavAudio.dataUrl)
+      }
     }
 
     public toggleRecording() {
@@ -151,36 +116,17 @@
       }
     }
 
-    public contextClose() {
-      this.context && this.context.close()
-    }
-
-    public sourceDisconnect() {
-      this.source && this.source.disconnect()
-      this.processor && this.processor.disconnect()
-    }
-
-    public sourceConnect() {
-      if (!this.source || !this.processor || !this.context) {
-        console.error('sourceConnect error:', this.source, this.processor, this.context)
-        return
-      }
-      this.source.connect(this.processor)
-      this.processor.connect(this.context.destination)
-    }
-
     public togglePause() {
-      if (!this.recorder) {
-        return
-      }
+      const wavCodec = this.wavCodec as IWavCodec
+      const recorder = this.recorder as MediaRecorder
 
       if (this.isPaused) {
-        this.recorder.resume()
-        this.sourceConnect()
+        recorder.resume()
+        wavCodec.resume()
         this.calcRecordingTime()
       } else {
-        this.recorder.pause()
-        this.sourceDisconnect()
+        recorder.pause()
+        wavCodec.pause()
       }
 
       this.isPaused = !this.isPaused
@@ -225,6 +171,17 @@
       }, 100)
     }
 
+    get durationLabel() {
+      return parseFloat((this.duration).toFixed(3))
+    }
+
+    get actionName() {
+      return this.isRecording ? 'Stop Record' : 'Start Record'
+    }
+
+    get pauseName() {
+      return this.isPaused ? 'Resume' : 'Paused'
+    }
   }
 </script>
 
