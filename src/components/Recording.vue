@@ -28,19 +28,15 @@
     public recorder?: MediaRecorder
     public audioSources: any[] = []
     public constraints: { [key: string]: any } = {
-      audio: {
-        sampleRate: 128000
-      },
+      audio: true,
       video: false
     }
     public dataChunks: Blob[] = []
     public context?: AudioContext
     public source?: MediaStreamAudioSourceNode
     public processor?: ScriptProcessorNode
-    public channelCount: number = 1
-    public sampleRate: number = 10000
+    public sampleRate: number = 9000
     public bufferSize: number = 4096
-    public sampleSize: number = 16
     public pcmSamples: any[] = []
     public duration: number = 0
 
@@ -67,32 +63,34 @@
         throw new Error('DOMException: UnkownError, media track not found.')
       }
       let firstTrackSettings = firstTrack.getSettings()
+      const channelCount = firstTrackSettings.channelCount
+      const sampleSize = firstTrackSettings.sampleSize
 
       // 创建音频环境，处理音频数据
       this.context = new AudioContext()
-      this.channelCount = firstTrackSettings.channelCount || 1
-      this.sampleSize = firstTrackSettings.sampleSize
-      this.sampleRate = this.context.sampleRate
-      let wavCodec = new WavCodec({
-        sampleRate: this.sampleRate,
-        channelCount: this.channelCount,
-        bufferSize: this.bufferSize,
-        sampleSize: this.sampleSize
-      })
       this.source = this.context.createMediaStreamSource(this.stream)
-      this.processor = this.context.createScriptProcessor(this.bufferSize, this.channelCount, this.channelCount)
+      this.processor = this.context.createScriptProcessor(this.bufferSize, channelCount, channelCount)
+
+      const sampleRate = this.source.context.sampleRate
+      let wavCodec = new WavCodec({
+        originSampleRate: sampleRate,
+        sampleRate: this.sampleRate,
+        channelCount: channelCount,
+        bufferSize: this.bufferSize,
+        sampleSize: sampleSize
+      })
+
       this.processor.onaudioprocess = (ev: AudioProcessingEvent) => {
         const sample = ev.inputBuffer.getChannelData(0)
-        // console.log('onaudioprocess:', ev, sample)
+        // console.log('onaudioprocess:', ev)
         this.duration += ev.inputBuffer.duration
         this.pcmSamples.push(sample)
         wavCodec.encode(sample)
       }
       this.sourceConnect()
 
-      this.recorder = new MediaRecorder(this.stream, {
-        audioBitsPerSecond: this.sampleRate
-      })
+      // 原生API
+      this.recorder = new MediaRecorder(this.stream)
       this.recorder.onstart = (event: Event) => {
         console.log('Recorder started')
 

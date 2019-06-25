@@ -1,16 +1,18 @@
 export interface ICodecOption {
   [key: string]: any
 
-  sampleRate: number
-  sampleSize: number
-  channelCount: number
-  bufferSize: number
+  originSampleRate?: number
+  sampleRate?: number
+  sampleSize?: number
+  channelCount?: number
+  bufferSize?: number
 }
 
 export interface IWavCodec {
   config: ICodecOption
   dataViews: DataView[]
   dataViewsLength: number
+  ratio: number
 
   new(option?: ICodecOption): IWavCodec
 
@@ -28,7 +30,8 @@ export interface IWavCodec {
 }
 
 const DefCodecOption: ICodecOption = {
-  sampleRate: 44100,
+  originSampleRate: 44100,
+  sampleRate: 22050,
   channelCount: 1,
   bufferSize: 4096,
   sampleSize: 16
@@ -39,11 +42,16 @@ export class WavCodec implements IWavCodec {
   config: ICodecOption
   dataViews: DataView[] = []
   dataViewsLength: number = 0
+  ratio: number = 1
 
   constructor(option: ICodecOption = DefCodecOption) {
     this.config = {
+      ...DefCodecOption,
       ...option
     }
+    let {sampleRate, originSampleRate} = this.config as { sampleRate: number, originSampleRate: number }
+    this.ratio = Math.ceil(originSampleRate / sampleRate)
+    console.log('ratio', originSampleRate, sampleRate, this.ratio)
   }
 
   writeString(view: DataView, offset: number, str: string): void {
@@ -53,24 +61,27 @@ export class WavCodec implements IWavCodec {
   }
 
   /*
-  * 压缩录音数据
+  * 压缩录音数据，根据重定义的采样率压缩数据，在生成wav格式前处理
   * @param samples 采集的音频数据
   * @param ratio 压缩比率
   * */
-  compress(samples: Float32Array, ratio: number): Float32Array {
-    const length = samples.byteLength / ratio
+  compress(samples: Float32Array): Float32Array {
+    const length = ~~(samples.length / this.ratio)
     const result = new Float32Array(length)
     for (let index = 0; index < length; index++) {
-      result[index] = samples[index * ratio]
+      result[index] = samples[index * this.ratio]
     }
     return result
   }
 
   encode(samples: Float32Array): void {
+    // 根据采样率比值压缩原始音频数据
+    samples = this.compress(samples)
+
     let {channelCount} = this.config
-    let buffer = new ArrayBuffer(samples.length * channelCount * 2)
+    let buffer: ArrayBuffer = new ArrayBuffer(samples.length * (channelCount as number) * 2)
     let view: DataView = new DataView(buffer)
-    let offset = 0
+    let offset: number = 0
 
     for (let i = 0; i < samples.length; i++, offset += 2) {
       let s = Math.max(-1, Math.min(1, samples[i]))
@@ -82,10 +93,11 @@ export class WavCodec implements IWavCodec {
   }
 
   finish() {
-    let buffer = new ArrayBuffer(44)
-    let view = new DataView(buffer)
-    let {channelCount, sampleRate} = this.config
+    let buffer: ArrayBuffer = new ArrayBuffer(44)
+    let view: DataView = new DataView(buffer)
+    let {channelCount, sampleRate, sampleSize} = this.config as { sampleRate: number, sampleSize: number, channelCount: number }
     let dataSize: number = channelCount * this.dataViewsLength * 2
+    let blockAlign: number = channelCount * sampleSize / 8
 
     // 设置wav格式头部信息数据
     this.writeString(view, 0, 'RIFF')
@@ -96,9 +108,9 @@ export class WavCodec implements IWavCodec {
     view.setUint16(20, 1, true)
     view.setUint16(22, channelCount, true)
     view.setUint32(24, sampleRate, true)
-    view.setUint32(28, sampleRate * 4, true)
-    view.setUint16(32, channelCount * 2, true)
-    view.setUint16(34, 16, true)
+    view.setUint32(28, sampleRate * blockAlign, true)
+    view.setUint16(32, blockAlign, true)
+    view.setUint16(34, sampleSize, true)
     this.writeString(view, 36, 'data')
     view.setUint32(40, dataSize, true)
 
@@ -116,3 +128,20 @@ export class WavCodec implements IWavCodec {
 }
 
 export default WavCodec
+
+
+// function floatTo16BitPCM(output, offset, input) {
+//   let initOffset = offset;
+//   for (let i = 0; i < input.length; i++, initOffset += 2) {
+//     const s = Math.max(-1, Math.min(1, input[i]));
+//     output.setInt16(initOffset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+//   }
+// }
+// function floatTo8bitPCM(output, offset, input) {
+//   let initOffset = offset;
+//   for (let i = 0; i < input.length; i++, initOffset++) {
+//     const s = Math.max(-1, Math.min(1, input[i]));
+//     const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
+//     output.setInt8(initOffset, parseInt(val / 256 + 128, 10), true);
+//   }
+// }
