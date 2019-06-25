@@ -10,7 +10,8 @@ export interface ICodecOption {
 
 const DefCodecOption: ICodecOption = {
   originSampleRate: 44100,
-  sampleRate: 22050,
+  // sampleRate: 8000、16000、32000、44100、48000
+  sampleRate: 16000,
   channelCount: 1,
   bufferSize: 4096,
   sampleSize: 16
@@ -28,7 +29,7 @@ export interface IWavCodec {
 
   new(option?: ICodecOption): IWavCodec
 
-  compress(samples: Float32Array, sampleRate: number): Float32Array
+  compress(samples: Float32Array): Float32Array
 
   encode(samples: Float32Array): void
 
@@ -126,10 +127,39 @@ export class WavCodec implements IWavCodec {
     this.cbs['duration'] = cb
   }
 
+  /**
+   * 音频重采样
+   * @param sourceData         原始数据
+   * @param originSampleRate   原始采样率
+   * @param srcSize            原始数据长度
+   * @param destinationData    重采样之后的数据
+   * @param sampleRate         重采样之后的数据长度
+   */
+  resampleData(sourceData: Float32Array): Float32Array {
+    const {originSampleRate, sampleRate} = this.config as { originSampleRate: number, sampleRate: number }
+    if (originSampleRate == sampleRate) {
+      return sourceData
+    }
+
+    let srcSize = sourceData.length
+    let last_pos = srcSize - 1
+    let dstSize = srcSize * (sampleRate / originSampleRate)
+    let destinationData: Float32Array = new Float32Array(dstSize)
+    for (let idx = 0; idx < dstSize; idx++) {
+      let index = ~~((idx * originSampleRate) / (sampleRate))
+      let p1 = index
+      let coef = index - p1
+      let p2 = (p1 == last_pos) ? last_pos : p1 + 1
+      destinationData[idx] = ((1.0 - coef) * sourceData[p1] + coef * sourceData[p2])
+    }
+
+    return destinationData
+  }
+
   /*
   * 压缩录音数据，根据重定义的采样率压缩数据，在生成wav格式前处理
-  * @param samples 采集的音频数据
-  * @param ratio 压缩比率
+  * @param samples   采集的音频数据
+  * @param ratio     压缩比率
   * */
   compress(samples: Float32Array): Float32Array {
     const length = ~~(samples.length / this.ratio)
@@ -144,14 +174,24 @@ export class WavCodec implements IWavCodec {
     // 根据采样率比值压缩原始音频数据
     samples = this.compress(samples)
 
-    let {channelCount} = this.config
-    let buffer: ArrayBuffer = new ArrayBuffer(samples.length * (channelCount as number) * 2)
+    let {channelCount} = this.config as { channelCount: number }
+    let buffer: ArrayBuffer = new ArrayBuffer(samples.length * channelCount * 2)
     let view: DataView = new DataView(buffer)
     let offset: number = 0
 
     for (let i = 0; i < samples.length; i++, offset += 2) {
       let s = Math.max(-1, Math.min(1, samples[i]))
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+      s = s < 0 ? s * 0x8000 : s * 0x7FFF
+      view.setInt16(offset, s, true)
+
+      // // 取整数
+      // let sample = (samples[i] * 0x7FFF) | 0
+      // if (sample > 0x7FFF) {
+      //   sample = 0x7FFF
+      // } else if (sample < -0x8000) {
+      //   sample = -0x8000
+      // }
+      // view.setInt16(offset, sample, true)
     }
 
     this.dataViews.push(view)
