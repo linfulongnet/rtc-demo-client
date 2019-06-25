@@ -48,9 +48,9 @@
         sampleRate: this.sampleRate,
         bufferSize: this.bufferSize
       })
-      wavCodec.onDuration((allDuration: number) => {
+      wavCodec.onDuration = (allDuration: number) => {
         this.duration = allDuration
-      })
+      }
       wavCodec.start()
 
 
@@ -97,7 +97,6 @@
 
       if (this.wavCodec) {
         this.wavCodec.stop()
-        this.wavCodec.finish()
         let wavBlob = this.wavCodec.getBlob()
         let wavAudio = {
           dataUrl: URL.createObjectURL(wavBlob),
