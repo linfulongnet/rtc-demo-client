@@ -14,7 +14,7 @@ const DefCodecOption: ICodecOption = {
   sampleRate: 16000,
   channelCount: 1,
   bufferSize: 4096,
-  sampleSize: 16,
+  sampleSize: 16
 }
 
 export interface IWavCodec {
@@ -57,7 +57,7 @@ export class WavCodec implements IWavCodec {
     this.stream = stream
     this.config = {
       ...DefCodecOption,
-      ...option,
+      ...option
     }
 
     // 获取音频轨道数据
@@ -134,12 +134,11 @@ export class WavCodec implements IWavCodec {
     const {channelCount, sampleRate, sampleSize} = this.config as {
       sampleRate: number, sampleSize: number, channelCount: number,
     }
-    const dataSize: number = channelCount * this.dataViewsLength * 2
     const blockAlign: number = channelCount * sampleSize / 8
 
     // 设置wav格式头部信息数据
     writeString(view, 0, 'RIFF')
-    view.setUint32(4, 36 + dataSize, true)
+    view.setUint32(4, 36 + this.dataViewsLength, true)
     writeString(view, 8, 'WAVE')
     writeString(view, 12, 'fmt ')
     view.setUint32(16, 16, true)
@@ -150,7 +149,7 @@ export class WavCodec implements IWavCodec {
     view.setUint16(32, blockAlign, true)
     view.setUint16(34, sampleSize, true)
     writeString(view, 36, 'data')
-    view.setUint32(40, dataSize, true)
+    view.setUint32(40, this.dataViewsLength, true)
 
     return view
   }
@@ -158,7 +157,7 @@ export class WavCodec implements IWavCodec {
   public getBlob(type?: string): Blob {
     const buffer: DataView[] = [
       this.getWavHead(),
-      ...this.dataViews,
+      ...this.dataViews
     ]
     return new Blob(buffer, {type: type || 'audio/wav'})
   }
