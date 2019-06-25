@@ -21,21 +21,14 @@ export interface IWavCodec {
   config: ICodecOption
   dataViews: DataView[]
   dataViewsLength: number
-  ratio: number
 
   stream?: MediaStream
   source?: MediaStreamAudioSourceNode
   processor?: ScriptProcessorNode
 
-  new(option?: ICodecOption): IWavCodec
-
-  compress(samples: Float32Array): Float32Array
-
   encode(samples: Float32Array): void
 
-  finish(): void
-
-  cancel(): void
+  getWavHead(): DataView
 
   getBlob(type?: string): Blob
 
@@ -47,23 +40,18 @@ export interface IWavCodec {
 
   resume(): void
 
-  onDuration(cb: (allDuration: number, duration: number) => void): void
-
-  ondataavailable(event: BlobEvent): void
+  onDuration(allDuration: number, duration: number): void
 }
 
-// @ts-ignore
 export class WavCodec implements IWavCodec {
   config: ICodecOption
   dataViews: DataView[] = []
   dataViewsLength: number = 0
-  ratio: number = 1
-  stream: MediaStream
-  source: MediaStreamAudioSourceNode
-  processor: ScriptProcessorNode
   duration: number = 0
 
-  cbs: { [key: string]: Function } = {}
+  stream?: MediaStream
+  source?: MediaStreamAudioSourceNode
+  processor?: ScriptProcessorNode
 
   constructor(stream: MediaStream, option?: ICodecOption) {
     this.stream = stream
@@ -77,7 +65,6 @@ export class WavCodec implements IWavCodec {
     const firstTrackSettings = tracks[0].getSettings()
     this.config.sampleSize = firstTrackSettings.sampleSize as number
     const channelCount: number = this.config.channelCount = firstTrackSettings.channelCount as number
-    const sampleRate: number = this.config.sampleRate as number
     const bufferSize: number = this.config.bufferSize as number
 
     // 生成音频源节点，及设置采样数据量大小
@@ -85,21 +72,19 @@ export class WavCodec implements IWavCodec {
     this.source = context.createMediaStreamSource(stream)
     this.processor = context.createScriptProcessor(bufferSize, channelCount, channelCount)
     this.processor.onaudioprocess = this.onaudioprocess.bind(this)
-
-    const originSampleRate: number = this.config.originSampleRate = this.source.context.sampleRate as number
-
-    // 计算压缩比率值
-    this.ratio = Math.ceil(originSampleRate / sampleRate)
-    console.log('ratio', originSampleRate, sampleRate, this.ratio)
+    this.config.originSampleRate = this.source.context.sampleRate as number
   }
 
   start() {
+    this.dataViews = []
+    this.dataViewsLength = 0
+
     this.resume()
   }
 
   stop() {
     this.pause()
-    this.stream.getTracks().forEach((track) => track.stop())
+    this.stream && this.stream.getTracks().forEach((track) => track.stop())
   }
 
   pause() {
@@ -108,6 +93,9 @@ export class WavCodec implements IWavCodec {
   }
 
   resume() {
+    if (!this.source || !this.processor) {
+      return
+    }
     this.source.connect(this.processor)
     this.processor.connect(this.source.context.destination)
   }
@@ -115,90 +103,28 @@ export class WavCodec implements IWavCodec {
   onaudioprocess(ev: AudioProcessingEvent) {
     const sample = ev.inputBuffer.getChannelData(0)
     this.duration += ev.inputBuffer.duration
-    this.cbs['duration'] && this.cbs['duration'](this.duration, ev.inputBuffer.duration)
+    this.onDuration(this.duration, ev.inputBuffer.duration)
     this.encode(sample)
   }
 
-  ondataavailable(event: BlobEvent) {
-
-  }
-
-  onDuration(cb: (allDuration: number, duration: number) => void) {
-    this.cbs['duration'] = cb
-  }
-
-  /**
-   * 音频重采样
-   * @param sourceData         原始数据
-   * @param originSampleRate   原始采样率
-   * @param srcSize            原始数据长度
-   * @param destinationData    重采样之后的数据
-   * @param sampleRate         重采样之后的数据长度
-   */
-  resampleData(sourceData: Float32Array): Float32Array {
-    const {originSampleRate, sampleRate} = this.config as { originSampleRate: number, sampleRate: number }
-    if (originSampleRate == sampleRate) {
-      return sourceData
-    }
-
-    let srcSize = sourceData.length
-    let last_pos = srcSize - 1
-    let dstSize = srcSize * (sampleRate / originSampleRate)
-    let destinationData: Float32Array = new Float32Array(dstSize)
-    for (let idx = 0; idx < dstSize; idx++) {
-      let index = ~~((idx * originSampleRate) / (sampleRate))
-      let p1 = index
-      let coef = index - p1
-      let p2 = (p1 == last_pos) ? last_pos : p1 + 1
-      destinationData[idx] = ((1.0 - coef) * sourceData[p1] + coef * sourceData[p2])
-    }
-
-    return destinationData
-  }
-
-  /*
-  * 压缩录音数据，根据重定义的采样率压缩数据，在生成wav格式前处理
-  * @param samples   采集的音频数据
-  * @param ratio     压缩比率
-  * */
-  compress(samples: Float32Array): Float32Array {
-    const length = ~~(samples.length / this.ratio)
-    const result = new Float32Array(length)
-    for (let index = 0; index < length; index++) {
-      result[index] = samples[index * this.ratio]
-    }
-    return result
+  onDuration(allDuration: number, duration: number) {
   }
 
   encode(samples: Float32Array): void {
     // 根据采样率比值压缩原始音频数据
-    samples = this.compress(samples)
+    samples = interpolateArray(samples, this.config.sampleRate as number, this.config.originSampleRate as number)
 
     let {channelCount} = this.config as { channelCount: number }
     let buffer: ArrayBuffer = new ArrayBuffer(samples.length * channelCount * 2)
     let view: DataView = new DataView(buffer)
-    let offset: number = 0
 
-    for (let i = 0; i < samples.length; i++, offset += 2) {
-      let s = Math.max(-1, Math.min(1, samples[i]))
-      s = s < 0 ? s * 0x8000 : s * 0x7FFF
-      view.setInt16(offset, s, true)
-
-      // // 取整数
-      // let sample = (samples[i] * 0x7FFF) | 0
-      // if (sample > 0x7FFF) {
-      //   sample = 0x7FFF
-      // } else if (sample < -0x8000) {
-      //   sample = -0x8000
-      // }
-      // view.setInt16(offset, sample, true)
-    }
+    floatTo16BitPCM(view, samples)
 
     this.dataViews.push(view)
     this.dataViewsLength += buffer.byteLength
   }
 
-  finish() {
+  getWavHead(): DataView {
     let buffer: ArrayBuffer = new ArrayBuffer(44)
     let view: DataView = new DataView(buffer)
     let {channelCount, sampleRate, sampleSize} = this.config as { sampleRate: number, sampleSize: number, channelCount: number }
@@ -220,16 +146,16 @@ export class WavCodec implements IWavCodec {
     writeString(view, 36, 'data')
     view.setUint32(40, dataSize, true)
 
-    this.dataViews.unshift(view)
-  }
-
-  cancel() {
-    this.dataViews = []
-    this.dataViewsLength = 0
+    return view
   }
 
   getBlob(type?: string): Blob {
-    return new Blob(this.dataViews, {type: type || 'audio/wav'})
+    const buffer: DataView[] = [
+      this.getWavHead(),
+      ...this.dataViews
+    ]
+    console.log('buffer', buffer)
+    return new Blob(buffer, {type: type || 'audio/wav'})
   }
 }
 
@@ -241,18 +167,103 @@ function writeString(view: DataView, offset: number, str: string): void {
   }
 }
 
-// function floatTo16BitPCM(output, offset, input) {
-//   let initOffset = offset;
-//   for (let i = 0; i < input.length; i++, initOffset += 2) {
-//     const s = Math.max(-1, Math.min(1, input[i]));
-//     output.setInt16(initOffset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-//   }
-// }
-// function floatTo8bitPCM(output, offset, input) {
-//   let initOffset = offset;
-//   for (let i = 0; i < input.length; i++, initOffset++) {
-//     const s = Math.max(-1, Math.min(1, input[i]));
-//     const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
-//     output.setInt8(initOffset, parseInt(val / 256 + 128, 10), true);
-//   }
-// }
+/*
+* 压缩录音数据，根据重定义的采样率压缩数据，在生成wav格式前处理
+* @param samples   采集的音频数据
+* @param ratio     压缩比率
+* */
+function compress(samples: Float32Array, ratio: number): Float32Array {
+  const length = ~~(samples.length / ratio)
+  const result = new Float32Array(length)
+  for (let index = 0; index < length; index++) {
+    result[index] = samples[index * ratio]
+  }
+  return result
+}
+
+// 音频重采样数据线性插值
+function linearInterpolate(before: number, after: number, atPoint: number) {
+  return before + (after - before) * atPoint
+}
+
+/**
+ * 音频重采样
+ * @param data               原始数据
+ * @param originSampleRate   原始采样率
+ * @param sampleRate         新采样率
+ */
+function interpolateArray(data: Float32Array, sampleRate: number, originSampleRate: number): Float32Array {
+  if (originSampleRate == sampleRate) {
+    return data
+  }
+
+  let fitCount: number = ~~(data.length * (sampleRate / originSampleRate))
+  let newData: Float32Array = new Float32Array(fitCount)
+  let lastDataPos: number = data.length - 1
+  let lastFitPos: number = fitCount - 1
+  let springFactor: number = lastDataPos / lastFitPos
+  newData[0] = data[0]
+  for (let i = 1; i < lastFitPos; i++) {
+    let tmp = i * springFactor
+    let before = ~~(Math.floor(tmp))
+    let after = ~~(Math.ceil(tmp))
+    newData[i] = linearInterpolate(data[before], data[after], tmp - before)
+  }
+  newData[lastFitPos] = data[lastDataPos]
+
+  return newData
+}
+
+/**
+ * 音频重采样
+ * @param sourceData         原始数据
+ * @param originSampleRate   原始采样率
+ * @param sampleRate         新采样率
+ */
+function resampledData(sourceData: Float32Array, sampleRate: number, originSampleRate: number): Float32Array {
+  if (originSampleRate == sampleRate) {
+    return sourceData
+  }
+
+  let srcSize = sourceData.length
+  let last_pos = srcSize - 1
+  let dstSize = srcSize * (sampleRate / originSampleRate)
+  let destinationData: Float32Array = new Float32Array(dstSize)
+  for (let idx = 0; idx < dstSize; idx++) {
+    let index = ~~((idx * originSampleRate) / (sampleRate))
+    let p1 = index
+    let coef = index - p1
+    let p2 = (p1 == last_pos) ? last_pos : p1 + 1
+    destinationData[idx] = ((1.0 - coef) * sourceData[p1] + coef * sourceData[p2])
+  }
+
+  return destinationData
+}
+
+// 编码16位pcm数据 sampleSize=16
+function floatTo16BitPCM(view: DataView, input: Float32Array, offset: number = 0): void {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, input[i]))
+    s = s < 0 ? s * 0x8000 : s * 0x7FFF
+    view.setInt16(offset, s, true)
+
+    // // 取整数
+    // let sample = (samples[i] * 0x7FFF) | 0
+    // if (sample > 0x7FFF) {
+    //   sample = 0x7FFF
+    // } else if (sample < -0x8000) {
+    //   sample = -0x8000
+    // }
+    // view.setInt16(offset, sample, true)
+  }
+}
+
+// 编码8位pcm数据 sampleSize=8
+function floatTo8bitPCM(view: DataView, input: Float32Array, offset: number = 0): void {
+  for (let i = 0; i < input.length; i++, offset++) {
+    const s = Math.max(-1, Math.min(1, input[i]))
+    let val = s < 0 ? s * 0x8000 : s * 0x7FFF
+    val = (val / 256 + 128) | 0
+    view.setInt8(offset, val)
+  }
+}
