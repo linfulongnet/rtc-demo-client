@@ -63,7 +63,6 @@ export class WavCodec implements IWavCodec {
     // 获取音频轨道数据
     const tracks = this.stream.getAudioTracks()
     const firstTrackSettings = tracks[0].getSettings()
-    this.config.sampleSize = firstTrackSettings.sampleSize as number
     const channelCount: number = this.config.channelCount = firstTrackSettings.channelCount as number
     const bufferSize: number = this.config.bufferSize as number
 
@@ -73,6 +72,7 @@ export class WavCodec implements IWavCodec {
     this.processor = context.createScriptProcessor(bufferSize, channelCount, channelCount)
     this.processor.onaudioprocess = this.onaudioprocess.bind(this)
     this.config.originSampleRate = this.source.context.sampleRate as number
+    firstTrackSettings.sampleSize && (this.config.sampleSize = firstTrackSettings.sampleSize as number)
   }
 
   public start() {
