@@ -14,7 +14,7 @@ const DefCodecOption: ICodecOption = {
   sampleRate: 16000,
   channelCount: 1,
   bufferSize: 4096,
-  sampleSize: 16
+  sampleSize: 16,
 }
 
 export interface IWavCodec {
@@ -57,7 +57,7 @@ export class WavCodec implements IWavCodec {
     this.stream = stream
     this.config = {
       ...DefCodecOption,
-      ...option
+      ...option,
     }
 
     // 获取音频轨道数据
@@ -157,7 +157,7 @@ export class WavCodec implements IWavCodec {
   public getBlob(type?: string): Blob {
     const buffer: ArrayBuffer[] = [
       this.getWavHead(),
-      ...this.dataViews
+      ...this.dataViews,
     ]
     return new Blob(buffer, {type: type || 'audio/wav'})
   }
