@@ -19,7 +19,7 @@ const DefCodecOption: ICodecOption = {
 
 export interface IWavCodec {
   config: ICodecOption
-  dataViews: DataView[]
+  dataViews: ArrayBuffer[]
   dataViewsLength: number
 
   stream?: MediaStream
@@ -28,7 +28,7 @@ export interface IWavCodec {
 
   encode(samples: Float32Array): void
 
-  getWavHead(): DataView
+  getWavHead(): ArrayBuffer
 
   getBlob(type?: string): Blob
 
@@ -45,7 +45,7 @@ export interface IWavCodec {
 
 export class WavCodec implements IWavCodec {
   public config: ICodecOption
-  public dataViews: DataView[] = []
+  public dataViews: ArrayBuffer[] = []
   public dataViewsLength: number = 0
   public duration: number = 0
 
@@ -124,11 +124,11 @@ export class WavCodec implements IWavCodec {
 
     floatTo16BitPCM(view, samples)
 
-    this.dataViews.push(view)
+    this.dataViews.push(buffer)
     this.dataViewsLength += buffer.byteLength
   }
 
-  public getWavHead(): DataView {
+  public getWavHead(): ArrayBuffer {
     const buffer: ArrayBuffer = new ArrayBuffer(44)
     const view: DataView = new DataView(buffer)
     const {channelCount, sampleRate, sampleSize} = this.config as {
@@ -151,11 +151,11 @@ export class WavCodec implements IWavCodec {
     writeString(view, 36, 'data')
     view.setUint32(40, this.dataViewsLength, true)
 
-    return view
+    return buffer
   }
 
   public getBlob(type?: string): Blob {
-    const buffer: DataView[] = [
+    const buffer: ArrayBuffer[] = [
       this.getWavHead(),
       ...this.dataViews
     ]
