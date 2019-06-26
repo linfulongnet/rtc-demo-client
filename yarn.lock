@@ -7565,11 +7565,6 @@ realpath-native@^1.0.0:
   dependencies:
     util.promisify "^1.0.0"
 
-recordrtc@^5.5.7:
-  version "5.5.7"
-  resolved "https://registry.yarnpkg.com/recordrtc/-/recordrtc-5.5.7.tgz#153f516e618394a5be4077cd47764e565368e537"
-  integrity sha512-OMNgUE1zmq+l6H0RfydWBVAOoP2nRHCmItO8gXr5Kj1lOtjleDGRCKoZnSBbmJIziimDhWd2hzQGNMedBUlMpw==
-
 redent@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/redent/-/redent-1.0.0.tgz#cf916ab1fd5f1f16dfb20822dd6ec7f730c2afde"
