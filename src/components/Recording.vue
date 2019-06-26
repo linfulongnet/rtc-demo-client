@@ -33,7 +33,7 @@ export default class Recording extends Vue {
     video: false,
   }
   public dataChunks: Blob[] = []
-  public sampleRate: number = 9000
+  public sampleRate: number = 8000
   public bufferSize: number = 4096
   public duration: number = 0
   public wavCodec?: IWavCodec
