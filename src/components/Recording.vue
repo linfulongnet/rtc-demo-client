@@ -22,7 +22,8 @@
   import WavCodec, {IWavCodec} from '@/modules/wavCodec'
 
   enum SignalingType {
-    NewUser = 100,
+    Online = 100,
+    Offline,
     UserInfo,
     Offer,
     Answer,
@@ -214,14 +215,7 @@
     }
 
     public initWebSocket() {
-      const ws: WebSocket = this.ws = new WebSocket(`ws://${window.location.hostname}:7000/ws`)
-      ws.onopen = (event: Event) => {
-        console.log('WebSocket opened!', event)
-        // 连接成功后，请求用户id等数据
-        this.send({
-          command: SignalingType.UserInfo
-        })
-      }
+      const ws: WebSocket = (window as any).ws = this.ws = new WebSocket(`ws://${window.location.hostname}:7000/ws`)
       ws.onmessage = async (event: MessageEvent) => {
         let message: Signaling
         try {
@@ -233,8 +227,8 @@
         // @ts-ignore
         const {command, data} = message
         switch (command) {
-          case SignalingType.NewUser:
-            console.log('NewUser:', data, this.userInfo)
+          case SignalingType.Online:
+            console.log('Online:', data)
             if (!this.userInfo) {
               return
             }
@@ -249,6 +243,9 @@
               command: SignalingType.Offer,
               data: {desc: this.localPeer.localDescription}
             })
+            break
+          case SignalingType.Offline:
+            console.log('Offline:', data)
             break
           case SignalingType.UserInfo:
             console.log('UserInfo:', data)
@@ -291,6 +288,13 @@
           default:
             console.warn('Unknown command:', command, data)
         }
+      }
+      ws.onopen = (event: Event) => {
+        console.log('WebSocket opened!', event)
+        // 连接成功后，请求用户id等数据
+        this.send({
+          command: SignalingType.UserInfo
+        })
       }
       ws.onerror = (event: Event) => {
         console.log('WebSocket error:', event)
