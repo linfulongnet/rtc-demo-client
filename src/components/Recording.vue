@@ -48,12 +48,36 @@
         </tbody>
       </table>
     </div>
+
+    <div class='data-channel'>
+      <div class='send-record'>
+        <h4>send-record</h4>
+        <div class='send-record-container'>
+          <p v-for='(item,index) in sendRecord'
+             :key='index'
+             class='send-record-item'>
+            {{item}}
+          </p>
+        </div>
+      </div>
+      <div class='receive-record'>
+        <h4>receive-record</h4>
+        <div class='receive-record-container'>
+          <p v-for='(item,index) in receiveRecord'
+             :key='index'
+             class='receive-record-item'>
+            {{item}}
+          </p>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import WavCodec, { IWavCodec } from '@/modules/wavCodec'
+import { sleep } from '@/utils/time'
 
 enum SignalingType {
   Online = 100,
@@ -93,9 +117,12 @@ export default class Recording extends Vue {
 
   public ws?: WebSocket
   public localPeer?: RTCPeerConnection
+  public receiveChannel?: RTCDataChannel
+  public sendChannel?: RTCDataChannel
   public userInfo: any = {}
-
   public wsList: Array<{ [key: string]: any }> = []
+  public receiveRecord: any[] = []
+  public sendRecord: any[] = []
 
   public async startRecord() {
     this.stream = await navigator.mediaDevices.getUserMedia(this.constraints)
@@ -321,6 +348,11 @@ export default class Recording extends Vue {
           this.localPeer = this.newRTCPeerConnection()
         }
         await this.localPeer.setRemoteDescription(new RTCSessionDescription((data || {}).desc))
+
+        for (let i = 0; i < 10; i++) {
+          await sleep(1000)
+          this.sendDataChannelMessage('test RTCDataChannel ' + i)
+        }
         break
       case SignalingType.HangUp:
         console.log('[HangUp] data:%o, target:%d, source:%d', data, target, source)
@@ -359,19 +391,50 @@ export default class Recording extends Vue {
   }
 
   public beforeMount() {
+    this.newRTCPeerConnection()
     this.initWebSocket()
   }
 
   public newRTCPeerConnection(): RTCPeerConnection {
     this.localPeer = new RTCPeerConnection()
+
+    this.sendChannel = this.localPeer.createDataChannel('sendChannel')
+    this.sendChannel.onopen = this.sendChannel.onclose = (event: Event) => {
+      switch (event.type) {
+        case 'open':
+          console.log('sendChannel onopen:', event)
+          break
+        case 'close':
+          console.log('sendChannel onclose:', event)
+          break
+      }
+    }
+
+    this.localPeer.ondatachannel = (event: RTCDataChannelEvent) => {
+      this.receiveChannel = event.channel
+      this.receiveChannel.onmessage = (ev: MessageEvent) => {
+        console.log('receiveChannel onmessage:', ev)
+        this.writeRecord(ev.data, 1)
+      }
+      this.receiveChannel.onopen = this.receiveChannel.onclose = (ev: Event) => {
+        switch (ev.type) {
+          case 'open':
+            console.log('receiveChannel onopen:', ev)
+            break
+          case 'close':
+            console.log('receiveChannel onclose:', ev)
+            break
+        }
+      }
+    }
+
     return this.localPeer
   }
 
   public async callPeer(user: { [key: string]: any }) {
     console.log('callPeer', user.id)
-    this.newRTCPeerConnection()
     if (!this.localPeer) {
-      return
+      this.localPeer = this.newRTCPeerConnection()
     }
     await this.localPeer.setLocalDescription(await this.localPeer.createOffer())
     this.send({
@@ -406,6 +469,24 @@ export default class Recording extends Vue {
     this.localPeer = undefined
 
   }
+
+  public sendDataChannelMessage(message: string) {
+    if (!this.sendChannel || this.sendChannel.readyState !== 'open') {
+      return
+    }
+    this.sendChannel.send(message)
+    this.writeRecord(message, 0)
+  }
+
+  public writeRecord(message: string, type: number) {
+    const timeStr: string = new Date().toLocaleTimeString()
+    const record: string = `${timeStr}: ${message}`
+    if (type === 0) {
+      this.sendRecord.push(record)
+    } else {
+      this.receiveRecord.push(record)
+    }
+  }
 }
 </script>
 
@@ -438,5 +519,32 @@ export default class Recording extends Vue {
 
   .online-users {
     width: 100%;
+  }
+
+  .data-channel {
+    display: flex;
+
+    .send-record,
+    .receive-record {
+      flex: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      min-height: 60px;
+      line-height: 26px;
+      padding: 10px;
+      text-align: left;
+
+      h4 {
+        margin: 0;
+        padding: 0;
+        text-align: center;
+      }
+
+      .send-record-container,
+      .receive-record-container {
+        max-height: 60vh;
+        overflow: auto;
+      }
+    }
   }
 </style>
