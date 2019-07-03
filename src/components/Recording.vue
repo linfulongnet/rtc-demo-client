@@ -15,7 +15,7 @@
       <button @click="saveAsRecordData(source)">download</button>
     </div>
 
-    <div class='user-info' style='text-align: left;color:#a020ff'>
+    <div class='user-info' style='text-align: left;color:#a020ff' v-if='userInfo.id'>
       <span style='padding:0 10px'>current:</span>
       <span style='padding:0 10px'>id: {{userInfo.id}}</span>
       <span style='padding:0 10px'>onlineTime: {{userInfo.onlineTime}}</span>
@@ -50,7 +50,7 @@
     </div>
 
     <div class='data-channel'>
-      <div class='send-record'>
+      <div class='send-record' v-if='sendRecord.length'>
         <h4>send-record</h4>
         <div class='send-record-container'>
           <p v-for='(item,index) in sendRecord'
@@ -60,7 +60,7 @@
           </p>
         </div>
       </div>
-      <div class='receive-record'>
+      <div class='receive-record' v-if='receiveRecord.length'>
         <h4>receive-record</h4>
         <div class='receive-record-container'>
           <p v-for='(item,index) in receiveRecord'
@@ -86,6 +86,7 @@ enum SignalingType {
   UserList,
   Offer,
   Answer,
+  Candidate,
   HangUp,
   Transfer,
 }
@@ -348,11 +349,17 @@ export default class Recording extends Vue {
           this.localPeer = this.newRTCPeerConnection()
         }
         await this.localPeer.setRemoteDescription(new RTCSessionDescription((data || {}).desc))
-
         for (let i = 0; i < 10; i++) {
           await sleep(1000)
           this.sendDataChannelMessage('test RTCDataChannel ' + i)
         }
+        break
+      case SignalingType.Candidate:
+        if (!this.localPeer) {
+          return
+        }
+        console.log('[Candidate] data:%o, target:%d, source:%d', data, target, source)
+        data && data.candidate && this.localPeer.addIceCandidate(new RTCIceCandidate(data.candidate))
         break
       case SignalingType.HangUp:
         console.log('[HangUp] data:%o, target:%d, source:%d', data, target, source)
@@ -436,6 +443,19 @@ export default class Recording extends Vue {
     if (!this.localPeer) {
       this.localPeer = this.newRTCPeerConnection()
     }
+    this.localPeer.onicecandidate = (ev: RTCPeerConnectionIceEvent) => {
+      if (!ev.candidate) {
+        return
+      }
+      this.send({
+        command: SignalingType.Candidate,
+        target: user.id,
+        data: {
+          candidate: ev.candidate,
+        },
+      })
+    }
+
     await this.localPeer.setLocalDescription(await this.localPeer.createOffer())
     this.send({
       command: SignalingType.Offer,
