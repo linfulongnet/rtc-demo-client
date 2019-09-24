@@ -1,20 +1,25 @@
 <template>
   <div id="app">
-    <Recording/>
+    <Login v-if='isLogin'></Login>
+    <Layout v-else>
+      <h1>Layout Page</h1>
+    </Layout>
   </div>
 </template>
 
 <script lang="ts">
-import {Component, Vue} from 'vue-property-decorator';
-import Recording from './components/Recording.vue';
+  import { Component, Vue } from 'vue-property-decorator'
+  import { State } from 'vuex-class'
 
-@Component({
-  components: {
-    Recording,
-  },
-})
-export default class App extends Vue {
-}
+  @Component({
+    components: {
+      Login: () => import('./views/Login.vue')
+    }
+  })
+  export default class App extends Vue {
+    @State('isLogin') isLogin!: boolean
+
+  }
 </script>
 
 <style lang="scss">
