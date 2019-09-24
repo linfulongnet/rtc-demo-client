@@ -8,9 +8,11 @@
   </Layout>
 </template>
 
-<script>
-  export default {
-    name: 'Home'
+<script lang='ts'>
+  import { Component, Vue } from 'vue-property-decorator'
+  import { State } from 'vuex-class'
+
+  export default class Home extends Vue {
   }
 </script>
 

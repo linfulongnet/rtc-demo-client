@@ -1,3 +1,4 @@
+import { LoginWay } from '@/protocol/rpc'
 <template>
   <div class="login">
     <div class="login-con">
@@ -34,6 +35,8 @@
 </template>
 
 <script lang='ts'>
+  import { newRpc, sendMessage, SendOption } from '@/protocol'
+  import { Login as LoginCtx, Transfer } from '@/protocol/rpc'
   import { Component, Vue } from 'vue-property-decorator'
   import { Mutation } from 'vuex-class'
 
@@ -61,9 +64,30 @@
     handleSubmit() {
       (this.$refs.loginForm as any).validate((valid: boolean) => {
         if (valid) {
-          this.setLoginStatus({ isLogin: true })
+          // this.setLoginStatus({ isLogin: true })
+          const req = new LoginCtx.Request({
+            ...this.account,
+            loginWay: LoginCtx.LoginWay.Password
+          })
+          const rpc = newRpc()
+          rpc.cmd = Transfer.Query.Login
+          rpc.data = LoginCtx.Request.encode(req).finish()
+          console.log(rpc, req)
+          const opt: SendOption = {
+            callback: this.loginCallback,
+            decoder: LoginCtx.Response
+          }
+          sendMessage(rpc, opt)
         }
       })
+    }
+
+    loginCallback(res: LoginCtx.IResponse) {
+      console.log('loginCallback:', res)
+      this.setLoginStatus({ isLogin: true })
+    }
+
+    public beforeMount() {
     }
   }
 </script>
