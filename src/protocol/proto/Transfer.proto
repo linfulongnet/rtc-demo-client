@@ -1,0 +1,21 @@
+syntax = "proto3";
+package Transfer;
+
+enum Query {
+  None = 0;
+  Login = 1;
+}
+
+enum RpcResCodes {
+
+}
+
+message Rpc {
+  string sid = 1;
+  int32 qid = 2;
+  int32 num = 3;
+  Query cmd = 4;
+  bytes data = 5;
+  RpcResCodes code = 6;
+  string info = 7;
+}

@@ -1,0 +1,30 @@
+syntax = "proto3";
+package Login;
+
+enum LoginWay {
+  None = 0;
+  Session = 0x10;
+  Password = 0x20;
+}
+
+message Request {
+  string userName = 1;
+  string password = 2;
+  LoginWay loginWay = 3;
+}
+
+enum ResCodes {
+  None = 0;
+  Success = 0x10;
+  NotUser = 0x20;
+  SessionExpiration = 0x30;
+  DataError = 0x40;
+  DbError = 0x50;
+  Unknown = 0x60;
+}
+
+message Response {
+  string sid = 1;
+  ResCodes code = 2;
+  string info = 3;
+}
