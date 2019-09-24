@@ -9,10 +9,16 @@ export interface State {
   isLogin: boolean
 }
 
+const state: State = {
+  isLogin: false
+}
+
 export default new Vuex.Store({
-  state: {
-    isLogin: true
+  state,
+  mutations: {
+    setLoginStatus(state, { isLogin }) {
+      state.isLogin = isLogin
+    }
   },
-  mutations: {},
   actions: {}
 })

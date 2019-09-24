@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <Login v-if='isLogin'></Login>
+    <Login v-if='!isLogin'></Login>
     <Layout v-else>
       <h1>Layout Page</h1>
     </Layout>
@@ -13,7 +13,7 @@
 
   @Component({
     components: {
-      Login: () => import('./views/Login.vue')
+      Login: () => import('./views/Login')
     }
   })
   export default class App extends Vue {
@@ -29,5 +29,10 @@
     -moz-osx-font-smoothing: grayscale;
     text-align: center;
     color: #2c3e50;
+  }
+
+  #app, body, html {
+    width: 100%;
+    height: 100%;
   }
 </style>
