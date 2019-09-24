@@ -5192,7 +5192,7 @@ istanbul-reports@^1.5.1:
   dependencies:
     handlebars "^4.0.3"
 
-iview@^3.0.1:
+iview@^3.5.1:
   version "3.5.1"
   resolved "https://registry.yarnpkg.com/iview/-/iview-3.5.1.tgz#d15b97126ea89a71f5b3623d6add2fb48f6f44d6"
   integrity sha512-UOwNvYtXi8TzjGvjwtw+4z21OU3Hvgl2Bx+9bphTdwb0B3UxfBDopDOdo5M9L70ztdbXlKxp8aysnCCrSKi8lQ==
