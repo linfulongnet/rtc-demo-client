@@ -6,8 +6,8 @@ enum Query {
   Login = 1;
 }
 
-enum RpcResCodes {
-
+enum RpcCodes {
+  None = 0;
 }
 
 message Rpc {
@@ -16,6 +16,6 @@ message Rpc {
   int32 num = 3;
   Query cmd = 4;
   bytes data = 5;
-  RpcResCodes code = 6;
+  RpcCodes code = 6;
   string info = 7;
 }
