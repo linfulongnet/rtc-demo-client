@@ -1,9 +1,7 @@
 <template>
   <div id="app">
     <Login v-if='!isLogin'></Login>
-    <Layout v-else>
-      <h1>Layout Page</h1>
-    </Layout>
+    <Home v-else></Home>
   </div>
 </template>
 
@@ -13,12 +11,12 @@
 
   @Component({
     components: {
-      Login: () => import('./views/Login')
+      Login: () => import('./views/Login'),
+      Home: () => import('./views/Home')
     }
   })
   export default class App extends Vue {
     @State('isLogin') isLogin!: boolean
-
   }
 </script>
 
